@@ -76,18 +76,42 @@ impl Chip8 {
             0x3000 => {
                 // TODO SE Vx
             },
-            0x4000 => return,
-            0x5000 => return,
-            0x6000 => return,
-            0x7000 => return,
-            0x8000 => return,
-            0x9000 => return,
-            0xA000 => return,
-            0xB000 => return,
-            0xC000 => return,
-            0xD000 => return,
-            0xE000 => return,
-            0xF000 => return,
+            0x4000 => {
+                // TODO
+            },
+            0x5000 => {
+                // TODO
+            },
+            0x6000 => {
+                // TODO
+            },
+            0x7000 => {
+                // TODO
+            },
+            0x8000 => {
+                // TODO
+            },
+            0x9000 => {
+                // TODO
+            },
+            0xA000 => {
+                // TODO
+            },
+            0xB000 => {
+                // TODO
+            },
+            0xC000 => {
+                // TODO
+            },
+            0xD000 => {
+                // TODO
+            },
+            0xE000 => {
+                // TODO
+            },
+            0xF000 => {
+                // TODO
+            },
             _ => {
                 // TODO fail here
             }
