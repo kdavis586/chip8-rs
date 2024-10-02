@@ -1,5 +1,6 @@
 // Following chip-8 spec from http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
-use std::{cmp::{self, min}, os::unix::raw::gid_t};
+use std::cmp;
+use rand::{self, Rng};
 
 const STACK_SIZE: u8 = 16;
 
@@ -11,7 +12,7 @@ struct Chip8 {
     ram: [u8; 4096],
     disp_buffer: [u8; 2048],
 
-    keypad: u16,
+    keypad: u8,
 
     stack: [u16; STACK_SIZE as usize],
     sp: u8, // stack pointer
@@ -157,7 +158,7 @@ impl Chip8 {
                         let vy: u8 = self.v_reg[y as usize];
 
                         let sum: u8 = self.v_reg[x as usize] + self.v_reg[y as usize];
-                        self.v_reg[15] = (sum < min(vx, vy)) as u8;                         
+                        self.v_reg[15] = (sum < cmp::min(vx, vy)) as u8;                         
                         self.v_reg[x as usize] = sum;
                     },
                     0x0005 => {
@@ -193,25 +194,110 @@ impl Chip8 {
                 }
             },
             0x9000 => {
-                // TODO
+                match instruction & 0x000F {
+                    0x0000 => {
+                        // SNE Vx, Vy
+                        let x: u16 = (instruction & 0x0F00) >> 8;
+                        let y: u16 = (instruction & 0x00F0) >> 4;
+                        if self.v_reg[x as usize] == self.v_reg[y as usize] {
+                            self.pc += 2;
+                        }
+                    },
+                    _ => {
+                        // TODO fail here
+                    }
+                }
             },
             0xA000 => {
-                // TODO
+                // LD I, addr
+                let addr: u16 = instruction & 0x0FFF;
+                self.i = addr;
             },
             0xB000 => {
-                // TODO
+                // JP V0, addr
+                let addr: u16 = instruction & 0x0FFF;
+                self.pc = addr + (self.v_reg[0] as u16);
             },
             0xC000 => {
-                // TODO
+                // RND Vx, byte
+                let x: u16 = (instruction & 0x0F00) >> 8;
+                let kk: u8 = (instruction & 0x00FF) as u8;
+
+                let mut rng = rand::thread_rng();
+                self.v_reg[x as usize] = rng.gen::<u8>() & kk;
             },
             0xD000 => {
                 // TODO
             },
             0xE000 => {
-                // TODO
+                match instruction & 0x00FF {
+                    0x009E => {
+                        // SKP Vx
+                        let x: u16 = (instruction & 0x0F00) >> 8;
+                        if self.keypad == self.v_reg[x as usize] {
+                            self.pc += 2;
+                        }
+                    },
+                    0x00A1 => {
+                        // SKNP Vx
+                        let x: u16 = (instruction & 0x0F00) >> 8;
+                        if self.keypad != self.v_reg[x as usize] {
+                            self.pc += 2;
+                        }
+                    },
+                    _ => {
+                        // TODO fail here
+                    }
+                }
             },
             0xF000 => {
-                // TODO
+                let x: u16 = (instruction & 0x0F00) >> 8;
+                match instruction & 0x00FF {
+                    0x0007 => {
+                        // LD Vx, DT
+                        self.v_reg[x as usize] = self.dt;
+                    },
+                    0x000A => {
+                        // LD Vx, K
+                        // TODO wait until key press, store in Vx
+                    },
+                    0x0015 => {
+                        // LD DT, Vx
+                        self.dt = self.v_reg[x as usize];
+                    },
+                    0x0018 => {
+                        // LD ST, Vx
+                        self.st = self.v_reg[x as usize];
+                    },
+                    0x001E => {
+                        // ADD I, Vx
+                        self.i += self.v_reg[x as usize] as u16;
+                    },
+                    0x0029 => {
+                        // LD F, Vx
+                        // TODO
+                    },
+                    0x0033 => {
+                        // TODO
+                    },
+                    0x0055 => {
+                        // LD [I], Vx 
+                        let mut store_addr: u16 = self.i;
+                        for vx in self.v_reg.iter() {
+                            self.ram[store_addr as usize] = *vx; 
+                            store_addr += 1; 
+                        }
+                    },
+                    0x0065 => {
+                        // LD Vx, [I] 
+                        for i in 0..self.v_reg.len() {
+                            self.v_reg[i] = self.ram[self.i as usize + i];
+                        }
+                    },
+                    _ => {
+                        // TODO fail here
+                    }
+                }
             },
             _ => {
                 // TODO fail here
