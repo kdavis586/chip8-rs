@@ -10,7 +10,7 @@ fn main() {
 
 struct Chip8 {
     ram: [u8; 4096],
-    disp_buffer: [u8; 2048],
+    disp_buffer: [[u8; 64]; 32],
 
     keypad: u8,
 
@@ -32,7 +32,7 @@ impl Default for Chip8 {
     fn default() -> Self {
         Chip8 {
             ram: [0u8; 4096],
-            disp_buffer: [0u8; 2048],
+            disp_buffer: [[0u8; 64]; 32],
             keypad: 0,
             stack: [0u16; 16],
             sp: 0,
@@ -227,7 +227,34 @@ impl Chip8 {
                 self.v_reg[x as usize] = rng.gen::<u8>() & kk;
             },
             0xD000 => {
-                // TODO
+                // DRW Vx, Vy, nibble
+                let x: u16 = (instruction & 0x0F00) >> 8;
+                let y: u16 = (instruction & 0x00F0) >> 4;
+                let size_bytes: u16 = instruction & 0x000F;
+                
+                let mut pixel_erased: bool = false;
+                for i in 0u16..size_bytes {
+                    // wrap around
+                    let y_coord: usize = ((y + i) % 32) as usize;
+                    let sprite_byte = self.ram[(self.i + i) as usize]; 
+
+                    for j in (0u16..8).rev() {
+                        // wrap around
+                        let x_coord: usize = ((x + j) % 64) as usize;
+
+                        let prev_val: u8 = self.disp_buffer[y_coord][x_coord];
+                        // get the bit value and shift to LSB 
+                        let pixel = (sprite_byte & (1 << j)) >> j;
+                        let new_val: u8 = prev_val ^ pixel;
+
+                        if new_val != prev_val {
+                           pixel_erased = true; 
+                        }
+
+                        self.disp_buffer[y_coord][x_coord] = new_val;
+                    }
+                }
+                self.v_reg[15] = pixel_erased as u8;
             },
             0xE000 => {
                 match instruction & 0x00FF {
