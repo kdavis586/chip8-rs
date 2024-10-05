@@ -7,6 +7,23 @@ const STACK_SIZE: u8 = 16;
 fn main() {
 }
 
+// Number Sprites
+const SPRITE_ZERO: [u8; 5] = [0xF0, 0x90, 0x90, 0x90, 0xF0];
+const SPRITE_ONE: [u8; 5] = [0x20, 0x60, 0x20, 0x20, 0x70];
+const SPRITE_TWO: [u8; 5] = [0xF0, 0x10, 0xF0, 0x80, 0xF0]; 
+const SPRITE_THREE: [u8; 5] = [0xF0, 0x10, 0xF0, 0x10, 0xF0];
+const SPRITE_FOUR: [u8; 5] = [0x90, 0x90, 0xF0, 0x10, 0x10];
+const SPRITE_FIVE: [u8; 5] = [0xF0, 0x80, 0xF0, 0x10, 0xF0];
+const SPRITE_SIX:  [u8; 5] = [0xF0, 0x80, 0xF0, 0x90, 0xF0];
+const SPRITE_SEVEN: [u8; 5] = [0xF0, 0x10, 0x20, 0x40, 0x40];
+const SPRITE_EIGHT: [u8; 5] =  [0xF0, 0x90, 0xF0, 0x90, 0xF0];
+const SPRITE_NINE: [u8; 5] = [0xF0, 0x90, 0xF0, 0x10, 0xF0]; 
+const SPRITE_A: [u8; 5] = [0xF0, 0x90, 0xF0, 0x90, 0x90];
+const SPRITE_B: [u8; 5] = [0xE0, 0x90, 0xE0, 0x90, 0xE0];
+const SPRITE_C: [u8; 5] = [0xF0, 0x80, 0x80, 0x80, 0xF0];
+const SPRITE_D: [u8; 5] = [0xE0, 0x90, 0x90, 0x90, 0xE0];
+const SPRITE_E: [u8; 5] = [0xF0, 0x80, 0xF0, 0x80, 0xF0];
+const SPRITE_F: [u8; 5] = [0xF0, 0x80, 0xF0, 0x80, 0x80];
 
 struct Chip8 {
     ram: [u8; 4096],
@@ -46,6 +63,25 @@ impl Default for Chip8 {
 }
 
 impl Chip8 {
+    fn _load_characters(&mut self) {
+        self.ram[0..5].copy_from_slice(&SPRITE_ZERO);
+        self.ram[5..10].copy_from_slice(&SPRITE_ONE);
+        self.ram[10..15].copy_from_slice(&SPRITE_TWO); 
+        self.ram[15..20].copy_from_slice(&SPRITE_THREE);
+        self.ram[20..25].copy_from_slice(&SPRITE_FOUR);
+        self.ram[25..30].copy_from_slice(&SPRITE_FIVE);
+        self.ram[30..35].copy_from_slice(&SPRITE_SIX); 
+        self.ram[35..40].copy_from_slice(&SPRITE_SEVEN);
+        self.ram[40..45].copy_from_slice(&SPRITE_EIGHT); 
+        self.ram[45..50].copy_from_slice(&SPRITE_NINE); 
+        self.ram[50..55].copy_from_slice(&SPRITE_A);
+        self.ram[55..60].copy_from_slice(&SPRITE_B);
+        self.ram[60..65].copy_from_slice(&SPRITE_C); 
+        self.ram[65..70].copy_from_slice(&SPRITE_D);
+        self.ram[70..75].copy_from_slice(&SPRITE_E); 
+        self.ram[75..80].copy_from_slice(&SPRITE_F); 
+    }
+
     fn _cycle(&mut self) {
         // fetch
         let instruction: u16 = ((self.ram[self.pc as usize] as u16) << 4) | (self.ram[(self.pc + 1) as usize] as u16);
@@ -57,18 +93,21 @@ impl Chip8 {
                     0x0000 => {
                         match instruction & 0x00FF {
                             0x00E0 => {
-                                // TODO CLS
+                                // CLS
+                                self.disp_buffer = [[0u8; 64]; 32];
                             },
                             0x00EE => {
-                                // TODO RET
+                                // RET
+                                self.pc = self.stack[self.sp as usize];
+                                self.sp -= 1;
                             },
                             _ => {
-                                // TODO fail here
+                                panic!("Invalid instruction.");
                             }
                         }
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
             },
@@ -83,7 +122,7 @@ impl Chip8 {
 
                 self.sp += 1;
                 if self.sp == STACK_SIZE {
-                    // TODO fail here - stack overflow
+                    panic!("Stack overflow.");
                 } 
                 self.stack[self.sp as usize] = self.pc;
                 self.pc = addr;
@@ -115,7 +154,7 @@ impl Chip8 {
                         }
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
 
@@ -189,7 +228,7 @@ impl Chip8 {
                         self.v_reg[x as usize] <<= 1;
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
             },
@@ -204,7 +243,7 @@ impl Chip8 {
                         }
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
             },
@@ -273,7 +312,7 @@ impl Chip8 {
                         }
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
             },
@@ -302,10 +341,22 @@ impl Chip8 {
                     },
                     0x0029 => {
                         // LD F, Vx
-                        // TODO
+                        let vx = self.v_reg[x as usize];
+                        // This could error if vx is > 16. Currently: up to the program writer to not violate this.
+
+                        self.i = (vx * 5) as u16;
                     },
                     0x0033 => {
-                        // TODO
+                        // LD, B, Vx
+                        let mut vx = self.v_reg[x as usize];
+                        let hundreds: u8 = vx % 100;
+                        vx -= 100 * hundreds;
+                        let tens: u8 = vx % 10;
+                        vx -= 10 * tens;
+
+                        self.ram[self.i as usize] = hundreds;
+                        self.ram[(self.i + 1) as usize] = tens; 
+                        self.ram[(self.i + 1) as usize] = vx; 
                     },
                     0x0055 => {
                         // LD [I], Vx 
@@ -322,14 +373,15 @@ impl Chip8 {
                         }
                     },
                     _ => {
-                        // TODO fail here
+                        panic!("Invalid instruction.");
                     }
                 }
             },
             _ => {
-                // TODO fail here
+                panic!("Invalid instruction.");
             }
         }
     }
+
 
 }
