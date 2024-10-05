@@ -29,6 +29,7 @@ struct Chip8 {
     ram: [u8; 4096],
     disp_buffer: [[u8; 64]; 32],
 
+    key_set: bool, 
     keypad: u8,
 
     stack: [u16; STACK_SIZE as usize],
@@ -50,6 +51,7 @@ impl Default for Chip8 {
         Chip8 {
             ram: [0u8; 4096],
             disp_buffer: [[0u8; 64]; 32],
+            key_set: false,
             keypad: 0,
             stack: [0u16; 16],
             sp: 0,
@@ -325,7 +327,13 @@ impl Chip8 {
                     },
                     0x000A => {
                         // LD Vx, K
-                        // TODO wait until key press, store in Vx
+                        // If no key set, continue w/o incrementing pc -> re-read the same instruction until the key is set.
+                        if !self.key_set {
+                            return;
+                        }
+
+                        self.v_reg[x as usize] = self.keypad;
+                        self.key_set = false;
                     },
                     0x0015 => {
                         // LD DT, Vx
@@ -381,6 +389,9 @@ impl Chip8 {
                 panic!("Invalid instruction.");
             }
         }
+
+        // Go to the next instruction
+        self.pc += 2;
     }
 
 
