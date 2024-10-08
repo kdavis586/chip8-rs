@@ -81,7 +81,6 @@ impl Chip8 {
         self.pc = 0x0200;
 
         let bytes: Vec<u8> = fs::read(file_path).expect("Failed to ready file.");
-
         self.ram[(self.pc as usize)..(self.pc as usize + bytes.len())].copy_from_slice(&bytes);
     }
 
@@ -134,12 +133,13 @@ impl Chip8 {
                 // CALL addr
                 let addr: u16 = instruction & 0x0FFF;
 
-                self.sp += 1;
                 if self.sp >= 16 {
                     panic!("Stack overflow.");
                 } 
+                self.sp += 1;
                 self.stack[self.sp as usize] = self.pc;
                 self.pc = addr;
+                return // Needed or else the increment outside the match ruins the call
             },
             0x3000 => {
                 // SE Vx, byte
@@ -177,7 +177,7 @@ impl Chip8 {
             0x7000 => {
                 // ADD Vx, byte
                 let kk: u8 = (instruction & 0x00FF) as u8;
-                self.v_reg[x as usize] += kk;
+                self.v_reg[x as usize] = self.v_reg[x as usize].wrapping_add(kk);
             },
             0x8000 => {
                 match instruction & 0x000F {
@@ -202,7 +202,7 @@ impl Chip8 {
                         let vx: u8 = self.v_reg[x as usize];
                         let vy: u8 = self.v_reg[y as usize];
 
-                        let sum: u8 = self.v_reg[x as usize] + self.v_reg[y as usize];
+                        let sum: u8 = self.v_reg[x as usize].wrapping_add(self.v_reg[y as usize]);
                         self.v_reg[15] = (sum < cmp::min(vx, vy)) as u8;                         
                         self.v_reg[x as usize] = sum;
                     },
@@ -212,7 +212,7 @@ impl Chip8 {
                         let vy: u8 = self.v_reg[y as usize];
 
                         self.v_reg[15] = (vx > vy) as u8; 
-                        self.v_reg[x as usize] -= vy;
+                        self.v_reg[x as usize] = self.v_reg[x as usize].wrapping_sub(vy);
                     },
                     0x0006 => {
                         // SHR Vx {, Vy}
@@ -225,7 +225,7 @@ impl Chip8 {
                         let vx: u8 = self.v_reg[x as usize];
                         let vy: u8 = self.v_reg[y as usize];
                         self.v_reg[15] = (vy > vx) as u8;                     
-                        self.v_reg[x as usize] = vy - vx;
+                        self.v_reg[x as usize] = vy.wrapping_sub(vx);
                     },
                     0x000E => {
                         // SHL Vx {, Vy}
@@ -242,7 +242,7 @@ impl Chip8 {
                 match instruction & 0x000F {
                     0x0000 => {
                         // SNE Vx, Vy
-                        if self.v_reg[x as usize] == self.v_reg[y as usize] {
+                        if self.v_reg[x as usize] != self.v_reg[y as usize] {
                             self.pc += 2;
                         }
                     },
@@ -342,38 +342,33 @@ impl Chip8 {
                     },
                     0x001E => {
                         // ADD I, Vx
-                        self.i += self.v_reg[x as usize] as u16;
+                        self.i = self.i.wrapping_add(self.v_reg[x as usize] as u16);
                     },
                     0x0029 => {
                         // LD F, Vx
                         let vx = self.v_reg[x as usize];
                         // This could error if vx is > 16. Currently: up to the program writer to not violate this.
 
+                        // Each sprite is 5 bytes, so the offset is 5
                         self.i = (vx * 5) as u16;
                     },
                     0x0033 => {
                         // LD, B, Vx
-                        let mut vx = self.v_reg[x as usize];
-                        let hundreds: u8 = vx % 100;
-                        vx -= 100 * hundreds;
-                        let tens: u8 = vx % 10;
-                        vx -= 10 * tens;
+                        let vx = self.v_reg[x as usize];
 
-                        self.ram[self.i as usize] = hundreds;
-                        self.ram[(self.i + 1) as usize] = tens; 
-                        self.ram[(self.i + 1) as usize] = vx; 
+                        self.ram[self.i as usize] = vx / 100;
+                        self.ram[(self.i + 1) as usize] = (vx % 100) / 10; 
+                        self.ram[(self.i + 2) as usize] = vx % 10; 
                     },
                     0x0055 => {
                         // LD [I], Vx 
-                        let mut store_addr: u16 = self.i;
-                        for vx in self.v_reg.iter() {
-                            self.ram[store_addr as usize] = *vx; 
-                            store_addr += 1; 
+                        for i in 0..(x as usize + 1) {
+                            self.ram[self.i as usize + i] = self.v_reg[i]; 
                         }
                     },
                     0x0065 => {
                         // LD Vx, [I] 
-                        for i in 0..self.v_reg.len() {
+                        for i in 0..(x as usize + 1) {
                             self.v_reg[i] = self.ram[self.i as usize + i];
                         }
                     },
