@@ -1,6 +1,9 @@
 use std::env;
+use raylib::prelude::*;
 
 mod chip8;
+
+const DISP_SCALE: i32 = 10;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -10,22 +13,24 @@ fn main() {
     let mut chip: chip8::Chip8 = chip8::Chip8::default();
     chip.init(&args[1]);
 
-    // TODO actually render correctly
     let (mut rl, thread) = raylib::init()
-        .size(640, 480)
-        .title("Hello, World")
+        .size(640, 320)
+        .title("Chip8 Display")
         .build();
 
     while !rl.window_should_close() {
+        chip.cycle();
+        let disp_buffer: &[[u8; 64]; 32] = chip.get_display();
         let mut d = rl.begin_drawing(&thread);
 
-        d.clear_background(Color::WHITE);
-        d.draw_text("Hello, world!", 12, 12, 20, Color::BLACK);
-    }
-
-    loop {
-        // TODO runs as fast as possible, limit to a target Hz
-        chip.cycle();
-        chip.get_display();
+        for y in 0..(disp_buffer.len() as i32) {
+            for x in 0..(disp_buffer.len() as i32) {
+                let mut pixel_color: Color = Color::BLACK; 
+                if disp_buffer[y as usize][x as usize] == 1 {
+                    pixel_color = Color::WHITE; 
+                }
+                d.draw_rectangle(x * DISP_SCALE, y * DISP_SCALE, DISP_SCALE, DISP_SCALE, pixel_color);
+            } 
+        }
     }
 }
