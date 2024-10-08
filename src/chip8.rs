@@ -202,36 +202,36 @@ impl Chip8 {
                         let vx: u8 = self.v_reg[x as usize];
                         let vy: u8 = self.v_reg[y as usize];
 
-                        let sum: u8 = self.v_reg[x as usize].wrapping_add(self.v_reg[y as usize]);
-                        self.v_reg[15] = (sum < cmp::min(vx, vy)) as u8;                         
+                        let sum: u8 = vx.wrapping_add(vy);
                         self.v_reg[x as usize] = sum;
+                        self.v_reg[15] = (sum < cmp::min(vx, vy)) as u8;                         
                     },
                     0x0005 => {
                         // SUB Vx, Vy
                         let vx: u8 = self.v_reg[x as usize];
                         let vy: u8 = self.v_reg[y as usize];
 
-                        self.v_reg[15] = (vx > vy) as u8; 
-                        self.v_reg[x as usize] = self.v_reg[x as usize].wrapping_sub(vy);
+                        self.v_reg[x as usize] = vx.wrapping_sub(vy);
+                        self.v_reg[15] = (vx >= vy) as u8; // Chip8 spec I'm following is incorrect, >= is correct. If vx == vy, then no borrow needed
                     },
                     0x0006 => {
                         // SHR Vx {, Vy}
                         let vx: u8 = self.v_reg[x as usize];
-                        self.v_reg[15] = vx & 0x01;
                         self.v_reg[x as usize] >>= 1;
+                        self.v_reg[15] = vx & 0x01;
                     },
                     0x0007 => {
                         // SUBN Vx, Vy
                         let vx: u8 = self.v_reg[x as usize];
                         let vy: u8 = self.v_reg[y as usize];
-                        self.v_reg[15] = (vy > vx) as u8;                     
                         self.v_reg[x as usize] = vy.wrapping_sub(vx);
+                        self.v_reg[15] = (vy >= vx) as u8;  // Chip8 spec I'm following is incorrect, >= is correct. If vy == vx, then no borrow needed                   
                     },
                     0x000E => {
                         // SHL Vx {, Vy}
                         let vx: u8 = self.v_reg[x as usize];
-                        self.v_reg[15] = vx & 0x80;
                         self.v_reg[x as usize] <<= 1;
+                        self.v_reg[15] = (vx & 0x80) >> 7;
                     },
                     _ => {
                         panic!("Invalid instruction {:#06x}.", instruction);
