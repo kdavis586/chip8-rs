@@ -81,12 +81,18 @@ impl Chip8 {
         self.pc = 0x0200;
 
         let bytes: Vec<u8> = fs::read(file_path).expect("Failed to ready file.");
-        self.ram[(self.pc as usize)..].copy_from_slice(&bytes);
+
+        self.ram[(self.pc as usize)..(self.pc as usize + bytes.len())].copy_from_slice(&bytes);
     }
 
     pub fn cycle(&mut self) {
         // fetch
-        let instruction: u16 = ((self.ram[self.pc as usize] as u16) << 4) | (self.ram[(self.pc + 1) as usize] as u16);
+        let instruction: u16 = ((self.ram[self.pc as usize] as u16) << 8) | (self.ram[(self.pc + 1) as usize] as u16);
+        let x: u16 = (instruction & 0x0F00) >> 8;
+        let y: u16 = (instruction & 0x00F0) >> 4;
+
+        // TODO REMOVE
+        println!("Instruction: {:#06x?}", instruction);
 
         // decode 
         match instruction & 0xF000 {
@@ -104,12 +110,16 @@ impl Chip8 {
                                 self.sp -= 1;
                             },
                             _ => {
-                                panic!("Invalid instruction.");
+                                // Could be a call to SYS addr (0nnn), ignore
+                                self.pc += 2;
+                                return
                             }
                         }
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        // Could be a call to SYS addr (0nnn), ignore
+                        self.pc += 2;
+                        return
                     }
                 }
             },
@@ -117,6 +127,8 @@ impl Chip8 {
                 // JP addr 
                 let addr: u16 = instruction & 0x0FFF;
                 self.pc = addr;
+                // To prevent pc increment
+                return
             },
             0x2000 => {
                 // CALL addr
@@ -131,7 +143,6 @@ impl Chip8 {
             },
             0x3000 => {
                 // SE Vx, byte
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 let kk: u8 = (instruction & 0x00FF) as u8;
                 if self.v_reg[x as usize] == kk {
                     self.pc += 2;
@@ -139,7 +150,6 @@ impl Chip8 {
             },
             0x4000 => {
                 // SNE Vx, byte 
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 let kk: u8 = (instruction & 0x00FF) as u8;
                 if self.v_reg[x as usize] != kk {
                     self.pc += 2;
@@ -149,33 +159,27 @@ impl Chip8 {
                 match instruction & 0x000F {
                     0x0000 => {
                         // SE Vx, Vy
-                        let x: u16 = (instruction & 0x0F00) >> 8;
-                        let y: u16 = (instruction & 0x00F0) >> 4;
                         if self.v_reg[x as usize] == self.v_reg[y as usize] {
                             self.pc += 2;
                         }
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        panic!("Invalid instruction {:#06x}.", instruction);
                     }
                 }
 
             },
             0x6000 => {
                 // LD Vx, byte
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 let kk: u8 = (instruction & 0x00FF) as u8;
                 self.v_reg[x as usize] = kk;
             },
             0x7000 => {
                 // ADD Vx, byte
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 let kk: u8 = (instruction & 0x00FF) as u8;
                 self.v_reg[x as usize] += kk;
             },
             0x8000 => {
-                let x: u16 = (instruction & 0x0F00) >> 8;
-                let y: u16 = (instruction & 0x00F0) >> 4;
                 match instruction & 0x000F {
                     0x0000 => {
                         // LD Vx, Vy
@@ -230,7 +234,7 @@ impl Chip8 {
                         self.v_reg[x as usize] <<= 1;
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        panic!("Invalid instruction {:#06x}.", instruction);
                     }
                 }
             },
@@ -238,14 +242,12 @@ impl Chip8 {
                 match instruction & 0x000F {
                     0x0000 => {
                         // SNE Vx, Vy
-                        let x: u16 = (instruction & 0x0F00) >> 8;
-                        let y: u16 = (instruction & 0x00F0) >> 4;
                         if self.v_reg[x as usize] == self.v_reg[y as usize] {
                             self.pc += 2;
                         }
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        panic!("Invalid instruction {:#06x}.", instruction);
                     }
                 }
             },
@@ -261,7 +263,6 @@ impl Chip8 {
             },
             0xC000 => {
                 // RND Vx, byte
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 let kk: u8 = (instruction & 0x00FF) as u8;
 
                 let mut rng = rand::thread_rng();
@@ -269,29 +270,28 @@ impl Chip8 {
             },
             0xD000 => {
                 // DRW Vx, Vy, nibble
-                let x: u16 = (instruction & 0x0F00) >> 8;
-                let y: u16 = (instruction & 0x00F0) >> 4;
+                let vx: u16 = self.v_reg[x as usize] as u16;
+                let vy: u16 = self.v_reg[y as usize] as u16;
                 let size_bytes: u16 = instruction & 0x000F;
                 
                 let mut pixel_erased: bool = false;
                 for i in 0u16..size_bytes {
                     // wrap around
-                    let y_coord: usize = ((y + i) % 32) as usize;
+                    let y_coord: usize = ((vy + i) % 32) as usize;
                     let sprite_byte = self.ram[(self.i + i) as usize]; 
 
                     for j in (0u16..8).rev() {
                         // wrap around
-                        let x_coord: usize = ((x + j) % 64) as usize;
-
+                        let x_coord: usize = ((vx + (7 - j)) % 64) as usize;
                         let prev_val: u8 = self.disp_buffer[y_coord][x_coord];
                         // get the bit value and shift to LSB 
                         let pixel = (sprite_byte & (1 << j)) >> j;
                         let new_val: u8 = prev_val ^ pixel;
 
-                        if new_val != prev_val {
+                        if new_val == 0 && prev_val == 1{
                            pixel_erased = true; 
                         }
-
+                        
                         self.disp_buffer[y_coord][x_coord] = new_val;
                     }
                 }
@@ -301,25 +301,22 @@ impl Chip8 {
                 match instruction & 0x00FF {
                     0x009E => {
                         // SKP Vx
-                        let x: u16 = (instruction & 0x0F00) >> 8;
                         if self.keypad == self.v_reg[x as usize] {
                             self.pc += 2;
                         }
                     },
                     0x00A1 => {
                         // SKNP Vx
-                        let x: u16 = (instruction & 0x0F00) >> 8;
                         if self.keypad != self.v_reg[x as usize] {
                             self.pc += 2;
                         }
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        panic!("Invalid instruction {:#06x}.", instruction);
                     }
                 }
             },
             0xF000 => {
-                let x: u16 = (instruction & 0x0F00) >> 8;
                 match instruction & 0x00FF {
                     0x0007 => {
                         // LD Vx, DT
@@ -381,12 +378,12 @@ impl Chip8 {
                         }
                     },
                     _ => {
-                        panic!("Invalid instruction.");
+                        panic!("Invalid instruction {:#06x}.", instruction);
                     }
                 }
             },
             _ => {
-                panic!("Invalid instruction.");
+                panic!("Invalid instruction {:#06x}.", instruction);
             }
         }
 
