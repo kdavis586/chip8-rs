@@ -10,6 +10,7 @@ fn main() {
     let mut chip: chip8::Chip8 = chip8::Chip8::default();
     chip.init(&args[1]);
 
+    // TODO actually render correctly
     let (mut rl, thread) = raylib::init()
         .size(640, 480)
         .title("Hello, World")
