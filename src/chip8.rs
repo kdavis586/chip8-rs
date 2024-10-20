@@ -1,5 +1,5 @@
 // Following chip-8 spec from http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
-use std::{cmp, fs};
+use std::{cmp, fs, u8::MAX};
 use rand::{self, Rng};
 
 // Number Sprites
@@ -24,8 +24,7 @@ pub struct Chip8 {
     ram: [u8; 4096],
     disp_buffer: [[u8; 64]; 32],
 
-    key_set: bool, 
-    keypad: u8,
+    keypad: u16,
 
     stack: [u16; 16],
     sp: u8, // stack pointer
@@ -46,7 +45,6 @@ impl Default for Chip8 {
         Chip8 {
             ram: [0u8; 4096],
             disp_buffer: [[0u8; 64]; 32],
-            key_set: false,
             keypad: 0,
             stack: [0u16; 16],
             sp: 0,
@@ -89,9 +87,6 @@ impl Chip8 {
         let instruction: u16 = ((self.ram[self.pc as usize] as u16) << 8) | (self.ram[(self.pc + 1) as usize] as u16);
         let x: u16 = (instruction & 0x0F00) >> 8;
         let y: u16 = (instruction & 0x00F0) >> 4;
-
-        // TODO REMOVE
-        println!("Instruction: {:#06x?}", instruction);
 
         // decode 
         match instruction & 0xF000 {
@@ -188,14 +183,17 @@ impl Chip8 {
                     0x0001 => {
                         // OR Vx, Vy
                         self.v_reg[x as usize] |= self.v_reg[y as usize];
+                        self.v_reg[15] = 0;
                     },
                     0x0002 => {
                         // AND Vx, Vy
                         self.v_reg[x as usize] &= self.v_reg[y as usize];
+                        self.v_reg[15] = 0;
                     },
                     0x0003 => {
                         // XOR Vx, Vy
                         self.v_reg[x as usize] ^= self.v_reg[y as usize];
+                        self.v_reg[15] = 0;
                     },
                     0x0004 => {
                         // ADD Vx, Vy
@@ -216,6 +214,7 @@ impl Chip8 {
                     },
                     0x0006 => {
                         // SHR Vx {, Vy}
+                        self.v_reg[x as usize] = self.v_reg[y as usize];
                         let vx: u8 = self.v_reg[x as usize];
                         self.v_reg[x as usize] >>= 1;
                         self.v_reg[15] = vx & 0x01;
@@ -229,6 +228,7 @@ impl Chip8 {
                     },
                     0x000E => {
                         // SHL Vx {, Vy}
+                        self.v_reg[x as usize] = self.v_reg[y as usize];
                         let vx: u8 = self.v_reg[x as usize];
                         self.v_reg[x as usize] <<= 1;
                         self.v_reg[15] = (vx & 0x80) >> 7;
@@ -270,22 +270,28 @@ impl Chip8 {
             },
             0xD000 => {
                 // DRW Vx, Vy, nibble
-                let vx: u16 = self.v_reg[x as usize] as u16;
-                let vy: u16 = self.v_reg[y as usize] as u16;
+                let vy: u16 = (self.v_reg[y as usize] as u16) % 32;
                 let size_bytes: u16 = instruction & 0x000F;
                 
                 let mut pixel_erased: bool = false;
                 for i in 0u16..size_bytes {
                     // wrap around
-                    let y_coord: usize = ((vy + i) % 32) as usize;
+                    let y_coord: usize = (vy + i) as usize;
+                    if y_coord >= 32 {
+                        break;
+                    }
                     let sprite_byte = self.ram[(self.i + i) as usize]; 
 
-                    for j in (0u16..8).rev() {
+                    let vx: u16 = (self.v_reg[x as usize] as u16) % 64;
+                    for j in 0u16..8 {
                         // wrap around
-                        let x_coord: usize = ((vx + (7 - j)) % 64) as usize;
+                        let x_coord: usize = (vx + j) as usize;
+                        if x_coord >= 64 {
+                            break;
+                        }
                         let prev_val: u8 = self.disp_buffer[y_coord][x_coord];
                         // get the bit value and shift to LSB 
-                        let pixel = (sprite_byte & (1 << j)) >> j;
+                        let pixel = (sprite_byte & (1 << (7 - j))) >> (7 - j);
                         let new_val: u8 = prev_val ^ pixel;
 
                         if new_val == 0 && prev_val == 1{
@@ -301,14 +307,16 @@ impl Chip8 {
                 match instruction & 0x00FF {
                     0x009E => {
                         // SKP Vx
-                        if self.keypad == self.v_reg[x as usize] {
+                        if self.keypad & (1 << self.v_reg[x as usize]) > 0 {
                             self.pc += 2;
+                            self.keypad = 0;
                         }
                     },
                     0x00A1 => {
                         // SKNP Vx
-                        if self.keypad != self.v_reg[x as usize] {
+                        if self.keypad & (1 << self.v_reg[x as usize]) == 0 {
                             self.pc += 2;
+                            self.keypad = 0;
                         }
                     },
                     _ => {
@@ -325,12 +333,22 @@ impl Chip8 {
                     0x000A => {
                         // LD Vx, K
                         // If no key set, continue w/o incrementing pc -> re-read the same instruction until the key is set.
-                        if !self.key_set {
+                        if self.keypad == 0 {
                             return;
                         }
+                        
+                        let mut key_shift: u8 = 0;
+                        // NOTE this will favor lower key presses in the event of multiple keys pressed at the same time
+                        while self.keypad & (1u16 << key_shift) == 0 && key_shift < 16 {
+                            key_shift += 1;
+                        }
+                        if key_shift == 16 {
+                            // Shouldn't happen since keypad is u16, so panic
+                            panic!("Error reading keypad")
+                        }
 
-                        self.v_reg[x as usize] = self.keypad;
-                        self.key_set = false;
+                        self.v_reg[x as usize] = key_shift;
+                        self.keypad = 0;
                     },
                     0x0015 => {
                         // LD DT, Vx
@@ -362,14 +380,16 @@ impl Chip8 {
                     },
                     0x0055 => {
                         // LD [I], Vx 
-                        for i in 0..(x as usize + 1) {
-                            self.ram[self.i as usize + i] = self.v_reg[i]; 
+                        for idx in 0..(x as usize + 1) {
+                            self.ram[self.i as usize] = self.v_reg[idx]; 
+                            self.i += 1;
                         }
                     },
                     0x0065 => {
                         // LD Vx, [I] 
-                        for i in 0..(x as usize + 1) {
-                            self.v_reg[i] = self.ram[self.i as usize + i];
+                        for idx in 0..(x as usize + 1) {
+                            self.v_reg[idx] = self.ram[self.i as usize];
+                            self.i += 1;
                         }
                     },
                     _ => {
@@ -382,8 +402,6 @@ impl Chip8 {
             }
         }
 
-        // TODO something the the delay and sound timers
-
         // Go to the next instruction
         self.pc += 2;
     }
@@ -392,5 +410,16 @@ impl Chip8 {
         return &self.disp_buffer;
     }
 
+    pub fn set_keypad(&mut self, key: u8) {
+        self.keypad |= 1u16 << key;
+    }
 
+    pub fn update_timers(&mut self) {
+        if self.dt > 0 {
+            self.dt -= 1;
+        }
+        if self.st > 0 {
+            self.st -= 1;
+        }
+    }
 }
